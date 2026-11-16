@@ -1,0 +1,53 @@
+# Gera os instaladores do NitzBoard aqui (repo público: Actions sem custo) a partir do código privado do agent-board.
+# Rodar: Actions → Instaladores → Run workflow → tag (ex.: v0.5.14). Publica a release com essa tag neste repo (a landing baixa daqui).
+# Precisa do secret AGENT_BOARD_TOKEN: token fine-grained só com leitura (Contents: read) do DadoNitz/agent-board.
+name: Instaladores
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag do agent-board (ex.: v0.5.14)'
+        required: true
+      notes:
+        description: 'Notas da versão (opcional)'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win
+          - os: macos-latest
+            target: --mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: DadoNitz/agent-board
+          ref: ${{ inputs.tag }}
+          token: ${{ secrets.AGENT_BOARD_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # sem certificado: o Mac assina ad-hoc (identity "-"), o Windows sai sem assinatura
+      - run: npx electron-builder ${{ matrix.target }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: NitzBoard ${{ inputs.tag }}
+          body: ${{ inputs.notes }}
+          files: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.blockmap
+            dist/latest*.yml
